@@ -44,6 +44,12 @@ streamlit run app.py
 
 Opens in your browser at `http://localhost:8501`.
 
+## Screenshots
+
+![Relationship Graph](screenshots/graph.png)
+![Person Search & Relationships](screenshots/search.png)
+![Methodology](screenshots/methodology.png)
+
 ## Features
 
 - **Relationship Graph** - Interactive network visualization of people co-occurring in documents. VIP nodes (Epstein, Maxwell, Trump, Clinton, Prince Andrew, etc.) highlighted.
