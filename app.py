@@ -224,7 +224,7 @@ def main():
                 """, conn, params=[selected_person, selected_person, selected_person])
 
                 if not df_connections.empty:
-                    st.dataframe(df_connections, use_container_width=True, hide_index=True)
+                    st.dataframe(df_connections, width='stretch', hide_index=True)
                 else:
                     st.info("No co-occurrence connections found.")
 
@@ -239,7 +239,7 @@ def main():
                 """, conn, params=[selected_person])
 
                 if not df_files.empty:
-                    st.dataframe(df_files, use_container_width=True, hide_index=True, height=400)
+                    st.dataframe(df_files, width='stretch', hide_index=True, height=400)
 
     # ── TAB 2: SEARCH ──
     with tab_search:
@@ -262,7 +262,7 @@ def main():
                 if df_matches.empty:
                     st.warning(f"No person matching '{person_query}' found in entities.")
                 else:
-                    st.dataframe(df_matches, use_container_width=True, hide_index=True)
+                    st.dataframe(df_matches, width='stretch', hide_index=True)
 
                     # Pick the top match for relationship display
                     top_match = df_matches.iloc[0]['Name']
@@ -434,7 +434,7 @@ and no way to verify completeness unless you brute-force every possible URL.
             'End ID': ['EFTA00423792', 'EFTA01262781', 'EFTA02212882', 'EFTA02730264'],
             'Total Slots': ['423,792', '838,989', '950,101', '517,382'],
         })
-        st.dataframe(df_ranges, use_container_width=True, hide_index=True)
+        st.dataframe(df_ranges, width='stretch', hide_index=True)
 
         st.markdown("---")
         st.subheader("Brute-Force Results")
@@ -447,7 +447,7 @@ and no way to verify completeness unless you brute-force every possible URL.
             'Fill Rate': ['In progress', '0.096%', '0.077%', '0.079%'],
             'Status': ['Running', 'Complete (log lost)', 'Complete', 'Complete'],
         })
-        st.dataframe(df_results, use_container_width=True, hide_index=True)
+        st.dataframe(df_results, width='stretch', hide_index=True)
 
         st.markdown("---")
         st.subheader("What This Means")
