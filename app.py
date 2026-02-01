@@ -10,9 +10,11 @@ import streamlit as st
 @st.cache_resource
 def get_db():
     conn = libsql.connect(
-        database=st.secrets["TURSO_URL"],
+        "local.db",
+        sync_url=st.secrets["TURSO_URL"],
         auth_token=st.secrets["TURSO_TOKEN"],
     )
+    conn.sync()
     return conn
 
 
