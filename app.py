@@ -436,7 +436,7 @@ and no way to verify completeness unless you brute-force every possible URL.
 
         df_results = pd.DataFrame({
             'Dataset': ['8', '9', '10', '11'],
-            'Files Found': ['In progress', 807, 686, 408],
+            'Files Found': ['In progress', '807', '686', '408'],
             'Empty Slots (404)': ['In progress', '838,182', '895,514', '516,943'],
             'Total IDs Scanned': ['In progress', '838,989', '896,200', '517,351'],
             'Fill Rate': ['In progress', '0.096%', '0.077%', '0.079%'],
