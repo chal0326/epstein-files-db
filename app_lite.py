@@ -19,6 +19,14 @@ def get_db():
     return conn
 
 
+DOJ_BASE = "https://www.justice.gov"
+
+
+def doj_url(filename, dataset):
+    """Build DOJ URL for a file."""
+    return f"{DOJ_BASE}/epstein/files/DataSet%20{dataset}/{filename}"
+
+
 def main():
     st.set_page_config(page_title="Epstein Files DB", layout="wide")
     conn = get_db()
@@ -185,7 +193,9 @@ def main():
                 """, conn, params=[selected_person])
 
                 if not df_files.empty:
-                    st.dataframe(df_files, width='stretch', hide_index=True, height=400)
+                    df_files["View on DOJ"] = df_files.apply(lambda r: doj_url(r["File"], r["DS"]), axis=1)
+                    st.dataframe(df_files, width='stretch', hide_index=True, height=400,
+                                 column_config={"View on DOJ": st.column_config.LinkColumn("View on DOJ", display_text="Open PDF")})
 
     # ── TAB 2: SEARCH PEOPLE ──
     with tab_search:
@@ -246,7 +256,9 @@ def main():
                     """, conn, params=[top_match])
 
                     if not df_files.empty:
-                        st.dataframe(df_files, width='stretch', hide_index=True, height=400)
+                        df_files["View on DOJ"] = df_files.apply(lambda r: doj_url(r["File"], r["DS"]), axis=1)
+                        st.dataframe(df_files, width='stretch', hide_index=True, height=400,
+                                     column_config={"View on DOJ": st.column_config.LinkColumn("View on DOJ", display_text="Open PDF")})
 
                         # Download as CSV
                         csv = df_files.to_csv(index=False)
