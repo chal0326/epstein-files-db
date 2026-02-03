@@ -313,15 +313,24 @@ def run_keyword_search(conn, keywords=None):
     conn.execute("DELETE FROM search_results")
     conn.commit()
 
-    # Get all text
-    rows = conn.execute("""
+    # Count total files
+    count_cursor = conn.execute("""
+        SELECT COUNT(*)
+        FROM files f
+        JOIN text_cache tc ON tc.file_id = f.id
+        WHERE tc.char_count > 0
+    """)
+    total_files = count_cursor.fetchone()[0]
+
+    print(f"  Searching {total_files} files with text...\n")
+
+    # Get cursor for iteration
+    cursor = conn.execute("""
         SELECT f.id, f.filename, f.rel_path, tc.extracted_text
         FROM files f
         JOIN text_cache tc ON tc.file_id = f.id
         WHERE tc.char_count > 0
-    """).fetchall()
-
-    print(f"  Searching {len(rows)} files with text...\n")
+    """)
 
     # Compile patterns
     patterns = {kw: re.compile(re.escape(kw), re.IGNORECASE) for kw in keywords}
@@ -330,29 +339,38 @@ def run_keyword_search(conn, keywords=None):
     files_with_hits = set()
     keyword_counts = defaultdict(int)
 
-    for i, (file_id, filename, rel_path, text) in enumerate(rows):
-        if (i + 1) % 1000 == 0:
-            print(f"  Processed {i+1}/{len(rows)} files...")
+    processed_count = 0
+    BATCH_SIZE = 100
 
-        for kw, pattern in patterns.items():
-            matches = list(pattern.finditer(text))
-            if matches:
-                # Get first match context
-                m = matches[0]
-                start = max(0, m.start() - 150)
-                end = min(len(text), m.end() + 150)
-                context = ' '.join(text[start:end].split())
+    while True:
+        batch = cursor.fetchmany(BATCH_SIZE)
+        if not batch:
+            break
 
-                conn.execute(
-                    "INSERT INTO search_results (file_id, keyword, match_count, context) VALUES (?, ?, ?, ?)",
-                    (file_id, kw, len(matches), context)
-                )
-                total_hits += len(matches)
-                files_with_hits.add(file_id)
-                keyword_counts[kw] += len(matches)
+        for file_id, filename, rel_path, text in batch:
+            processed_count += 1
+            if processed_count % 1000 == 0:
+                print(f"  Processed {processed_count}/{total_files} files...")
 
-        if (i + 1) % 5000 == 0:
-            conn.commit()
+            for kw, pattern in patterns.items():
+                matches = list(pattern.finditer(text))
+                if matches:
+                    # Get first match context
+                    m = matches[0]
+                    start = max(0, m.start() - 150)
+                    end = min(len(text), m.end() + 150)
+                    context = ' '.join(text[start:end].split())
+
+                    conn.execute(
+                        "INSERT INTO search_results (file_id, keyword, match_count, context) VALUES (?, ?, ?, ?)",
+                        (file_id, kw, len(matches), context)
+                    )
+                    total_hits += len(matches)
+                    files_with_hits.add(file_id)
+                    keyword_counts[kw] += len(matches)
+
+            if processed_count % 5000 == 0:
+                conn.commit()
 
     conn.commit()
 
@@ -364,7 +382,7 @@ def run_keyword_search(conn, keywords=None):
     with open(report_path, 'w') as f:
         f.write("EPSTEIN FILES KEYWORD SEARCH REPORT\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n")
-        f.write(f"Files searched: {len(rows)}\n")
+        f.write(f"Files searched: {total_files}\n")
         f.write(f"Files with hits: {len(files_with_hits)}\n")
         f.write(f"Total keyword matches: {total_hits}\n")
         f.write("=" * 70 + "\n\n")
