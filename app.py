@@ -21,6 +21,17 @@ def get_db():
     return conn
 
 
+@st.cache_data
+def get_top_entities(min_weight, max_nodes):
+    conn = get_db()
+    return conn.execute("""
+        SELECT normalized, entity_label, SUM(count) as total, COUNT(DISTINCT file_id) as files
+        FROM entities WHERE entity_label = 'PERSON'
+        GROUP BY normalized HAVING files >= ?
+        ORDER BY files DESC LIMIT ?
+    """, (min_weight, max_nodes)).fetchall()
+
+
 def main():
     st.set_page_config(page_title="Epstein Files DB", layout="wide")
     conn = get_db()
@@ -62,12 +73,7 @@ def main():
             }
 
             # Get top PERSON entities
-            top_entities = conn.execute("""
-                SELECT normalized, entity_label, SUM(count) as total, COUNT(DISTINCT file_id) as files
-                FROM entities WHERE entity_label = 'PERSON'
-                GROUP BY normalized HAVING files >= ?
-                ORDER BY files DESC LIMIT ?
-            """, (min_weight, max_nodes)).fetchall()
+            top_entities = get_top_entities(min_weight, max_nodes)
 
             entity_set = {e[0] for e in top_entities}
             entity_info = {e[0]: (e[1], e[2], e[3]) for e in top_entities}
