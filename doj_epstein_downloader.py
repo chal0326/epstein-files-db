@@ -61,13 +61,13 @@ URL_LIST_DIR = BASE_DIR / "url_lists"
 
 DOJ_BASE = "https://www.justice.gov"
 
-# Known EFTA ranges per dataset
-# Ranges for 8 and 9 are estimated - adjust if you find the actual boundaries
+# Known EFTA ranges per dataset (from user verification on DOJ website)
+# These are the ACTUAL ranges found on the DOJ disclosure pages
 DATASET_RANGES = {
-    8:  {"start": 1,       "end": 423792,  "dir": "DataSet%208"},
-    9:  {"start": 423793,  "end": 1262781, "dir": "DataSet%209"},
-    10: {"start": 1262782, "end": 2212882, "dir": "DataSet%2010"},
-    11: {"start": 2212883, "end": 2730264, "dir": "DataSet%2011"},
+    8:  {"start": 9676,     "end": 39023,    "dir": "DataSet%208"},
+    9:  {"start": 39025,    "end": 1262781,  "dir": "DataSet%209"},
+    10: {"start": 1262782,  "end": 2212882,  "dir": "DataSet%2010"},
+    11: {"start": 2212883,  "end": 2383321,  "dir": "DataSet%2011"},  # User's highest observed EFTA
 }
 
 

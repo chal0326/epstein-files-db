@@ -32,6 +32,14 @@ DOJ_BASE = "https://www.justice.gov"
 
 # Datasets that need page scraping (no zip available)
 SCRAPE_DATASETS = {
+    8: {
+        "url": "/epstein/doj-disclosures/data-set-8-files",
+        "file_prefix": "/epstein/files/DataSet%208/",
+    },
+    9: {
+        "url": "/epstein/doj-disclosures/data-set-9-files",
+        "file_prefix": "/epstein/files/DataSet%209/",
+    },
     10: {
         "url": "/epstein/doj-disclosures/data-set-10-files",
         "file_prefix": "/epstein/files/DataSet%2010/",
