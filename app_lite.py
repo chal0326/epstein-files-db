@@ -64,16 +64,17 @@ def main():
             entity_set = {e[0] for e in top_entities}
             entity_info = {e[0]: (e[1], e[2], e[3]) for e in top_entities}
 
-            for vip in vip_names:
-                if vip not in entity_set:
-                    row = conn.execute("""
-                        SELECT normalized, entity_label, SUM(count), COUNT(DISTINCT file_id)
-                        FROM entities WHERE normalized = ?
-                        GROUP BY normalized
-                    """, (vip,)).fetchone()
-                    if row:
-                        entity_set.add(row[0])
-                        entity_info[row[0]] = (row[1], row[2], row[3])
+            missing_vips = [vip for vip in vip_names if vip not in entity_set]
+            if missing_vips:
+                placeholders = ','.join(['?'] * len(missing_vips))
+                rows = conn.execute(f"""
+                    SELECT normalized, entity_label, SUM(count), COUNT(DISTINCT file_id)
+                    FROM entities WHERE normalized IN ({placeholders})
+                    GROUP BY normalized
+                """, missing_vips).fetchall()
+                for row in rows:
+                    entity_set.add(row[0])
+                    entity_info[row[0]] = (row[1], row[2], row[3])
 
             edges = conn.execute("""
                 SELECT entity_a, entity_b, file_count
