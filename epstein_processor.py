@@ -356,10 +356,13 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     return text
 
 
-def search_text(text: str, keyword: str, context_chars: int = 200) -> list:
+def search_text(text: str, keyword: str | re.Pattern, context_chars: int = 200) -> list:
     """Search for keyword in text, return matches with context."""
     matches = []
-    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+    if isinstance(keyword, re.Pattern):
+        pattern = keyword
+    else:
+        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
     
     for match in pattern.finditer(text):
         start = max(0, match.start() - context_chars)
@@ -399,6 +402,9 @@ def search_files(keyword: str, max_workers: int = 4):
     results = []
     processed = 0
     
+    # Compile pattern once
+    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+
     for pdf_path in pdf_files:
         processed += 1
         if processed % 100 == 0:
@@ -409,7 +415,7 @@ def search_files(keyword: str, max_workers: int = 4):
             if not text:
                 continue
             
-            matches = search_text(text, keyword)
+            matches = search_text(text, pattern)
             if matches:
                 results.append({
                     'file': str(pdf_path.relative_to(EXTRACT_DIR)),
@@ -481,7 +487,7 @@ def generate_report(keywords: list = None):
             rel_path = str(pdf_path.relative_to(EXTRACT_DIR))
 
             for kw, pattern in patterns.items():
-                matches = search_text(text, kw)
+                matches = search_text(text, pattern)
                 if matches:
                     all_results[kw].append({
                         'file': rel_path,
