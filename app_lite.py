@@ -19,6 +19,17 @@ def get_db():
     return conn
 
 
+@st.cache_data
+def get_cached_entities():
+    conn = get_db()
+    # Fetch entities with at least 2 files, matching the slider's minimum value
+    return conn.execute("""
+        SELECT normalized, entity_label, SUM(count) as total, COUNT(DISTINCT file_id) as files
+        FROM entities
+        GROUP BY normalized HAVING files >= 2
+        ORDER BY files DESC
+    """).fetchall()
+
 
 def main():
     st.set_page_config(page_title="Epstein Files DB", layout="wide")
@@ -54,12 +65,8 @@ def main():
                 'virginia roberts', 'virginia giuffre',
             }
 
-            top_entities = conn.execute("""
-                SELECT normalized, entity_label, SUM(count) as total, COUNT(DISTINCT file_id) as files
-                FROM entities
-                GROUP BY normalized HAVING files >= ?
-                ORDER BY files DESC LIMIT ?
-            """, (min_weight, max_nodes)).fetchall()
+            all_cached = get_cached_entities()
+            top_entities = [e for e in all_cached if e[3] >= min_weight][:max_nodes]
 
             entity_set = {e[0] for e in top_entities}
             entity_info = {e[0]: (e[1], e[2], e[3]) for e in top_entities}
