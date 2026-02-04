@@ -46,9 +46,11 @@ import sys
 import re
 import shutil
 import time
+import asyncio
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import aiohttp
+import aiofiles
 import requests
 
 # --- Configuration ---
@@ -69,21 +71,22 @@ DATASET_RANGES = {
 }
 
 
-def get_session():
-    """Create a requests session with DOJ age verification cookie."""
-    session = requests.Session()
-    session.headers.update({
+def get_async_session():
+    """Create an aiohttp session with DOJ age verification cookie."""
+    headers = {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         )
-    })
-    session.cookies.set("justiceGovAgeVerified", "true", domain=".justice.gov")
-    return session
+    }
+    # Domain-specific cookies in aiohttp are usually handled by the cookie jar,
+    # but for simple verification passing it in cookies dict is often enough.
+    cookies = {"justiceGovAgeVerified": "true"}
+    return aiohttp.ClientSession(headers=headers, cookies=cookies)
 
 
-def download_pdf(url: str, dest_dir: Path, session: requests.Session):
-    """Download a single PDF. Returns 'ok', 'skip', or 'fail'."""
+async def download_pdf_async(url: str, dest_dir: Path, session: aiohttp.ClientSession):
+    """Download a single PDF. Returns 'ok', 'skip', 'ratelimit', or 'fail'."""
     filename = requests.utils.unquote(url.split("/")[-1])
     dest = dest_dir / filename
 
@@ -91,23 +94,26 @@ def download_pdf(url: str, dest_dir: Path, session: requests.Session):
         return "skip"
 
     try:
-        resp = session.get(url, timeout=60)
+        async with session.get(url, timeout=60) as resp:
+            if resp.status == 404:
+                return "skip"
+            if resp.status == 403:
+                return "ratelimit"
 
-        if resp.status_code == 404:
-            return "skip"
-        if resp.status_code == 403:
-            return "ratelimit"
+            if resp.status != 200:
+                return "fail"
 
-        resp.raise_for_status()
+            content = await resp.read()
 
-        content_type = resp.headers.get("content-type", "")
-        if "text/html" in content_type and len(resp.content) < 200_000:
-            return "fail"  # got age gate or error page instead of PDF
-        if len(resp.content) < 100:
-            return "skip"
+            content_type = resp.headers.get("content-type", "")
+            if "text/html" in content_type and len(content) < 200_000:
+                return "fail"  # got age gate or error page instead of PDF
+            if len(content) < 100:
+                return "skip"
 
-        dest.write_bytes(resp.content)
-        return "ok"
+            async with aiofiles.open(dest, "wb") as f:
+                await f.write(content)
+            return "ok"
     except Exception:
         return "fail"
 
@@ -136,12 +142,8 @@ def generate_url_list(dataset_num: int):
     return total
 
 
-def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
-    """Download a dataset by trying every EFTA number in the range.
-
-    Fully resumable - skips files already on disk.
-    Handles rate limiting with automatic backoff.
-    """
+async def download_bruteforce_async(dataset_num: int, workers: int = 4, delay: float = 0.3):
+    """Download a dataset by trying every EFTA number in the range (Async)."""
     url_file = URL_LIST_DIR / f"dataset{dataset_num}_urls.txt"
 
     if not url_file.exists():
@@ -150,8 +152,6 @@ def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
 
     if not url_file.exists():
         return
-
-    session = get_session()
 
     urls = [u.strip() for u in url_file.read_text().strip().split("\n") if u.strip()]
 
@@ -181,22 +181,23 @@ def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
     start_time = time.time()
 
     batch_size = 500
+    semaphore = asyncio.Semaphore(workers)
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    async def protected_download(url, session):
+        async with semaphore:
+            return await download_pdf_async(url, dest_dir, session)
+
+    async with get_async_session() as session:
         batch_start = 0
-
         while batch_start < len(remaining):
             batch_end = min(batch_start + batch_size, len(remaining))
             batch = remaining[batch_start:batch_end]
 
-            futures = {
-                executor.submit(download_pdf, url, dest_dir, session): url
-                for url in batch
-            }
+            tasks = [protected_download(url, session) for url in batch]
+            results = await asyncio.gather(*tasks)
 
             batch_ratelimited = 0
-            for future in as_completed(futures):
-                result = future.result()
+            for result in results:
                 if result == "ok":
                     ok += 1
                 elif result == "skip":
@@ -226,11 +227,11 @@ def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
                     f"Backing off {backoff}s...",
                     flush=True,
                 )
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
             elif batch_ratelimited > 0:
-                time.sleep(delay * 5)
+                await asyncio.sleep(delay * 5)
             else:
-                time.sleep(delay)
+                await asyncio.sleep(delay)
 
             # Disk space check
             if total_done % 5000 == 0:
@@ -247,6 +248,11 @@ def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
         f"{ratelimited:,} rate-limited, {failed:,} failed",
         flush=True,
     )
+
+
+def download_bruteforce(dataset_num: int, workers: int = 4, delay: float = 0.3):
+    """Wrapper to run the async downloader."""
+    asyncio.run(download_bruteforce_async(dataset_num, workers, delay))
 
 
 def show_status():
