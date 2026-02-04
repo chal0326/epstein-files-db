@@ -383,6 +383,25 @@ def search_text(text: str, keyword: str, context_chars: int = 200) -> list:
     return matches
 
 
+def process_file(pdf_path: Path, keyword: str, extract_dir: Path):
+    """Process a single PDF file: extract text and search for keyword."""
+    try:
+        text = extract_text_from_pdf(pdf_path)
+        if not text:
+            return None
+
+        matches = search_text(text, keyword)
+        if matches:
+            return {
+                'file': str(pdf_path.relative_to(extract_dir)),
+                'matches': matches,
+                'match_count': len(matches)
+            }
+    except Exception:
+        pass
+    return None
+
+
 def search_files(keyword: str, max_workers: int = 4):
     """Search all extracted files for a keyword."""
     setup_directories()
@@ -399,25 +418,21 @@ def search_files(keyword: str, max_workers: int = 4):
     results = []
     processed = 0
     
-    for pdf_path in pdf_files:
-        processed += 1
-        if processed % 100 == 0:
-            print(f"  Processed {processed}/{len(pdf_files)} files...")
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_file = {executor.submit(process_file, pdf_path, keyword, EXTRACT_DIR): pdf_path for pdf_path in pdf_files}
         
-        try:
-            text = extract_text_from_pdf(pdf_path)
-            if not text:
-                continue
+        for future in concurrent.futures.as_completed(future_to_file):
+            processed += 1
+            if processed % 100 == 0:
+                print(f"  Processed {processed}/{len(pdf_files)} files...")
             
-            matches = search_text(text, keyword)
-            if matches:
-                results.append({
-                    'file': str(pdf_path.relative_to(EXTRACT_DIR)),
-                    'matches': matches,
-                    'match_count': len(matches)
-                })
-        except Exception as e:
-            continue
+            try:
+                result = future.result()
+                if result:
+                    results.append(result)
+            except Exception:
+                pass
     
     # Sort by number of matches
     results.sort(key=lambda x: x['match_count'], reverse=True)
