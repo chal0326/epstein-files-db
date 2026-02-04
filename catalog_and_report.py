@@ -118,12 +118,18 @@ def catalog(conn):
     skipped = 0
     new_files = 0
 
+    # Pre-fetch existing files to avoid N+1 selects
+    existing_files = set(row[0] for row in conn.execute("SELECT rel_path FROM files"))
+    existing_prod_files = set(row[0] for row in conn.execute("SELECT rel_path FROM production_files"))
+
     for scan_dir, label in SCAN_DIRS:
         if not scan_dir.exists():
             continue
 
         # Find all PDFs
         print(f"Scanning {scan_dir}...")
+        pdf_inserts = []
+
         for pdf_path in scan_dir.rglob("*.pdf"):
             pdf_count += 1
             rel_path = str(pdf_path.relative_to(BASE_DIR))
@@ -136,25 +142,34 @@ def catalog(conn):
                 continue
 
             # Check if already in DB
-            existing = conn.execute(
-                "SELECT id FROM files WHERE rel_path = ?", (rel_path,)
-            ).fetchone()
-            if existing:
+            if rel_path in existing_files:
                 continue
 
             file_size = pdf_path.stat().st_size
-
-            conn.execute(
-                "INSERT INTO files (filename, dataset, rel_path, file_size) VALUES (?, ?, ?, ?)",
-                (filename, dataset, rel_path, file_size)
-            )
+            pdf_inserts.append((filename, dataset, rel_path, file_size))
+            existing_files.add(rel_path)
             new_files += 1
 
-            if new_files % 5000 == 0:
+            if len(pdf_inserts) >= 5000:
+                conn.executemany(
+                    "INSERT INTO files (filename, dataset, rel_path, file_size) VALUES (?, ?, ?, ?)",
+                    pdf_inserts
+                )
                 conn.commit()
+                pdf_inserts = []
                 print(f"  Cataloged {new_files} new files...")
 
+        if pdf_inserts:
+            conn.executemany(
+                "INSERT INTO files (filename, dataset, rel_path, file_size) VALUES (?, ?, ?, ?)",
+                pdf_inserts
+            )
+            conn.commit()
+            pdf_inserts = []
+            print(f"  Cataloged {new_files} new files...")
+
         # Find production files (TIF, JPG, WAV, MP4)
+        prod_inserts = []
         for ext in ['*.tif', '*.jpg', '*.WAV', '*.MP4', '*.wav', '*.mp4']:
             for f in scan_dir.rglob(ext):
                 rel_path = str(f.relative_to(BASE_DIR))
@@ -162,18 +177,29 @@ def catalog(conn):
                 dataset = detect_dataset(f)
                 file_type = f.suffix.lower().lstrip('.')
 
-                existing = conn.execute(
-                    "SELECT id FROM production_files WHERE rel_path = ?", (rel_path,)
-                ).fetchone()
-                if existing:
+                if rel_path in existing_prod_files:
                     continue
 
                 file_size = f.stat().st_size
-                conn.execute(
-                    "INSERT INTO production_files (filename, dataset, rel_path, file_size, file_type) VALUES (?, ?, ?, ?, ?)",
-                    (filename, dataset, rel_path, file_size, file_type)
-                )
+                prod_inserts.append((filename, dataset, rel_path, file_size, file_type))
+                existing_prod_files.add(rel_path)
                 prod_count += 1
+
+                if len(prod_inserts) >= 5000:
+                    conn.executemany(
+                        "INSERT INTO production_files (filename, dataset, rel_path, file_size, file_type) VALUES (?, ?, ?, ?, ?)",
+                        prod_inserts
+                    )
+                    conn.commit()
+                    prod_inserts = []
+
+        if prod_inserts:
+            conn.executemany(
+                "INSERT INTO production_files (filename, dataset, rel_path, file_size, file_type) VALUES (?, ?, ?, ?, ?)",
+                prod_inserts
+            )
+            conn.commit()
+            prod_inserts = []
 
     conn.commit()
 
